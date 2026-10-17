@@ -2,6 +2,7 @@ package dev.ytkara.queue
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -30,6 +31,30 @@ class QueueRepositoryTest {
         val resolved = r.state.value.queue.single()
         assertEquals(EntryStatus.READY, resolved.status)
         assertEquals("Title u1", resolved.title)
+    }
+
+    @Test fun addWithMetaIsReadyWithoutLookup() = runTest {
+        var lookups = 0
+        val r = repo { lookups++; VideoMeta("x", null, null, 1) }
+        val e = r.add("u1", "Kim", -2, VideoMeta("Found", "chan", "thumb", 180))
+        runCurrent()
+        assertEquals(EntryStatus.READY, e.status)
+        assertEquals("Found", r.state.value.queue.single().title)
+        assertEquals(180L, r.state.value.queue.single().durationSec)
+        assertEquals(0, lookups)
+    }
+
+    @Test fun announcesEntriesOnceReady() = runTest {
+        val r = repo { if (it == "bad") throw IllegalStateException("x") else VideoMeta("Title $it", null, null, 1) }
+        val seen = mutableListOf<String>()
+        backgroundScope.launch { r.added.collect { seen += it.title } }
+        runCurrent()
+        r.add("u1", null, null)
+        assertTrue(seen.isEmpty()) // still resolving
+        r.add("u2", null, null, VideoMeta("From search", null, null, 1))
+        r.add("bad", null, null)
+        runCurrent()
+        assertEquals(listOf("From search", "Title u1"), seen)
     }
 
     @Test fun resolveFailureMarksError() = runTest {

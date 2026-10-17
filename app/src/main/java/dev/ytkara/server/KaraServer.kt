@@ -4,9 +4,12 @@ import android.content.res.AssetManager
 import android.util.Log
 import dev.ytkara.KaraSession
 import dev.ytkara.Phase
+import dev.ytkara.extract.SearchResult
+import dev.ytkara.extract.SearchService
 import dev.ytkara.extract.YouTubeUrls
 import dev.ytkara.player.PlayerSnapshot
 import dev.ytkara.queue.QueueEntry
+import dev.ytkara.queue.VideoMeta
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
@@ -27,12 +30,27 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.FileNotFoundException
 
 @Serializable
-data class AddRequest(val url: String, val singer: String? = null, val key: Int? = null)
+data class AddRequest(
+    val url: String,
+    val singer: String? = null,
+    val key: Int? = null,
+    // From a search result: when title is given the entry skips the metadata lookup.
+    val title: String? = null,
+    val channel: String? = null,
+    val thumb: String? = null,
+    val durationSec: Long? = null,
+)
+
+@Serializable
+data class SearchResponse(val results: List<SearchResult>)
 
 @Serializable
 data class UpdateRequest(val singer: String? = null, val key: Int? = null)
@@ -105,11 +123,28 @@ class KaraServer(
                     val req = call.receive<AddRequest>()
                     val url = YouTubeUrls.normalize(req.url)
                         ?: return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse("That isn't a YouTube video link"))
+                    val meta = req.title?.takeIf { it.isNotBlank() }?.let {
+                        VideoMeta(it.take(200), req.channel, req.thumb, req.durationSec ?: 0)
+                    }
                     try {
-                        call.respond(HttpStatusCode.Created, session.repo.add(url, req.singer, req.key))
+                        call.respond(HttpStatusCode.Created, session.repo.add(url, req.singer, req.key, meta))
                     } catch (e: IllegalArgumentException) {
                         call.respond(HttpStatusCode.Conflict, ErrorResponse(e.message ?: "Can't add"))
                     }
+                }
+                get("/api/search") {
+                    val q = call.request.queryParameters["q"]?.trim().orEmpty()
+                    if (q.isEmpty()) return@get call.respond(HttpStatusCode.BadRequest, ErrorResponse("Type something to search for"))
+                    val karaoke = call.request.queryParameters["karaoke"] != "0"
+                    val results = try {
+                        withContext(Dispatchers.IO) { SearchService.search(q, karaoke) }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Throwable) {
+                        Log.w("ytkara", "search failed for '$q'", e)
+                        return@get call.respond(HttpStatusCode.BadGateway, ErrorResponse("YouTube search failed"))
+                    }
+                    call.respond(SearchResponse(results))
                 }
                 patch("/api/queue/{id}") {
                     val req = call.receive<UpdateRequest>()

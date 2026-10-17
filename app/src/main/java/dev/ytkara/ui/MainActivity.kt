@@ -7,6 +7,11 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.annotation.OptIn
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,6 +37,9 @@ import dev.ytkara.Phase
 import dev.ytkara.net.LocalAddress
 import dev.ytkara.player.Key
 import dev.ytkara.player.KaraPlayer
+import dev.ytkara.queue.EntryStatus
+import dev.ytkara.queue.QueueEntry
+import dev.ytkara.queue.VideoMeta
 import dev.ytkara.server.KaraServer
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -41,6 +49,7 @@ import kotlinx.coroutines.flow.merge
 class MainActivity : ComponentActivity() {
     private val session: KaraSession get() = (application as KaraApp).session
     private var player by mutableStateOf<KaraPlayer?>(null)
+    private var searchOpen by mutableStateOf(false)
 
     private var forwardHeld = false
     private var lastBackAt = 0L
@@ -49,7 +58,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // Keeps the Fire OS screensaver away on every screen, idle included.
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        setContent { KaraRoot(session, player) }
+        setContent {
+            KaraRoot(session, player, searchOpen, onSearchOpen = { searchOpen = it })
+        }
     }
 
     override fun onStart() {
@@ -69,6 +80,12 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_MENU) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) searchOpen = true
+            return true
+        }
+        // Search is a normal focus-driven screen: the remote navigates it instead of the player.
+        if (searchOpen) return super.dispatchKeyEvent(event)
         val phase = session.phase.value
         val p = player
         if (phase is Phase.UpNext && event.keyCode in OK_KEYS) {
@@ -122,7 +139,12 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun KaraRoot(session: KaraSession, player: KaraPlayer?) {
+private fun KaraRoot(
+    session: KaraSession,
+    player: KaraPlayer?,
+    searchOpen: Boolean,
+    onSearchOpen: (Boolean) -> Unit,
+) {
     val phase by session.phase.collectAsState()
     val queue by session.repo.state.collectAsState()
     val snapshot by session.player.collectAsState()
@@ -136,6 +158,19 @@ private fun KaraRoot(session: KaraSession, player: KaraPlayer?) {
     }
 
     var toast by remember { mutableStateOf<String?>(null) }
+
+    // One banner at a time: songs queued in a burst each get their turn.
+    var added by remember { mutableStateOf<QueueEntry?>(null) }
+    var lastAdded by remember { mutableStateOf<QueueEntry?>(null) }
+    LaunchedEffect(Unit) {
+        session.repo.added.collect {
+            added = it
+            lastAdded = it
+            delay(4_000)
+            added = null
+            delay(400) // let it slide out before the next one
+        }
+    }
     LaunchedEffect(player) {
         val keys = player?.keyChanges?.map { Key.label(it) }
         val all = if (keys != null) merge(keys, session.messages) else session.messages
@@ -148,21 +183,43 @@ private fun KaraRoot(session: KaraSession, player: KaraPlayer?) {
 
     Box(Modifier.fillMaxSize().background(Kara.Background)) {
         when (val p = phase) {
-            Phase.Idle -> IdleScreen(url, queue.queue)
+            Phase.Idle -> IdleScreen(url, queue.queue, onSearch = { onSearchOpen(true) })
             is Phase.UpNext -> UpNextCard(p.entry, p.secondsLeft)
             is Phase.Playing -> {
                 if (player != null) VideoSurface(player)
                 if (snapshot.durationMs == 0L) LoadingCard(p.entry)
-                val next = queue.firstReady()
-                val nearStart = snapshot.positionMs in 1..10_000
-                val nearEnd = snapshot.durationMs > 0 && snapshot.durationMs - snapshot.positionMs < 20_000
-                if (next != null && (nearStart || nearEnd)) {
-                    UpNextStrip(next, Modifier.align(Alignment.BottomCenter))
-                }
+                val upcoming = queue.queue.filter { it.status != EntryStatus.ERROR }
+                if (upcoming.isNotEmpty()) UpNextTicker(upcoming, Modifier.align(Alignment.TopCenter))
                 if (snapshot.paused && snapshot.durationMs > 0) Toast("Paused", Modifier.align(Alignment.Center))
             }
         }
-        toast?.let { Toast(it, Modifier.align(Alignment.TopCenter).padding(top = 40.dp)) }
+        if (searchOpen) {
+            SearchScreen(
+                recentSingers = session::recentSingers,
+                onAdd = { r, singer, key ->
+                    try {
+                        session.repo.add(r.url, singer, key, VideoMeta(r.title, r.channel, r.thumb, r.durationSec))
+                    } catch (e: IllegalArgumentException) {
+                        session.notify(e.message ?: "Couldn't add that song")
+                    }
+                },
+                onClose = { onSearchOpen(false) },
+            )
+        }
+        AnimatedVisibility(
+            visible = added != null,
+            enter = slideInVertically { it } + fadeIn(),
+            exit = slideOutVertically { it } + fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter),
+        ) {
+            // Keep drawing the last entry while the banner slides out.
+            val shown = added ?: lastAdded
+            if (shown != null) {
+                AddedBanner(shown, position = queue.queue.indexOfFirst { it.id == shown.id } + 1)
+            }
+        }
+        // Below the up-next ticker when one is showing.
+        toast?.let { Toast(it, Modifier.align(Alignment.TopCenter).padding(top = 72.dp)) }
     }
 }
 

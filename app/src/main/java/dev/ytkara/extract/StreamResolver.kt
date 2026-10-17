@@ -2,6 +2,7 @@ package dev.ytkara.extract
 
 import android.util.Log
 import dev.ytkara.queue.VideoMeta
+import org.schabi.newpipe.extractor.Image
 import org.schabi.newpipe.extractor.MediaFormat
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.stream.AudioStream
@@ -23,11 +24,14 @@ object StreamResolver {
         return VideoMeta(
             title = info.name,
             uploader = info.uploaderName,
-            thumb = info.thumbnails.filter { it.height in 1..480 }.maxByOrNull { it.height }?.url
-                ?: info.thumbnails.firstOrNull()?.url,
+            thumb = thumbOf(info.thumbnails),
             durationSec = info.duration,
         )
     }
+
+    /** The largest thumbnail up to 480 px tall, so lists stay cheap to draw. */
+    fun thumbOf(images: List<Image>): String? =
+        images.filter { it.height in 1..480 }.maxByOrNull { it.height }?.url ?: images.firstOrNull()?.url
 
     /** Resolved fresh for every play: googlevideo URLs expire after a few hours. */
     fun streams(url: String): Streams {

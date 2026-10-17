@@ -69,6 +69,7 @@ if (navigator.clipboard?.readText) {
 
 $("add").addEventListener("submit", async (e) => {
   e.preventDefault();
+  if (!$("url").value.trim()) { $("url").focus(); return; }
   const btn = $("addBtn");
   const err = $("addError");
   err.hidden = true;
@@ -93,6 +94,54 @@ $("add").addEventListener("submit", async (e) => {
     refresh();
   }
 });
+
+// ---------- search ----------
+$("searchForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const q = $("q").value.trim();
+  if (!q) return;
+  $("q").blur();
+  const status = $("searchStatus");
+  status.hidden = false;
+  status.textContent = "Searching…";
+  $("results").replaceChildren();
+  try {
+    const karaoke = $("karaoke").checked ? 1 : 0;
+    const { results } = await api("GET", `/api/search?q=${encodeURIComponent(q)}&karaoke=${karaoke}`);
+    status.hidden = results.length > 0;
+    status.textContent = "No songs found. Try different words.";
+    $("results").replaceChildren(...results.map(resultRow));
+  } catch (ex) {
+    status.textContent = ex.message;
+  }
+});
+
+function resultRow(r) {
+  const li = $("result").content.firstElementChild.cloneNode(true);
+  const img = li.querySelector(".thumb");
+  if (r.thumb) img.src = r.thumb; else img.removeAttribute("src");
+  li.querySelector(".title").textContent = r.title;
+  li.querySelector(".channel").textContent = r.channel || "";
+  li.querySelector(".len").textContent = r.durationSec ? time(r.durationSec * 1000) : "";
+  const btn = li.querySelector(".add-result");
+  btn.onclick = async () => {
+    btn.disabled = true;
+    try {
+      const singer = singerInput.value.trim();
+      try { localStorage.setItem("singer", singer); } catch {}
+      await api("POST", "/api/queue", {
+        url: r.url, title: r.title, channel: r.channel, thumb: r.thumb, durationSec: r.durationSec,
+        singer, key: Number($("addKey").dataset.value),
+      });
+      btn.textContent = "Added ✓";
+    } catch (ex) {
+      btn.disabled = false;
+      alert(ex.message);
+    }
+    refresh();
+  };
+  return li;
+}
 
 // ---------- render ----------
 function render() {

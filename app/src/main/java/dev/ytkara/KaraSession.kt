@@ -73,6 +73,15 @@ class KaraSession(val repo: QueueRepository, private val scope: CoroutineScope) 
         startNow.trySend(Unit)
     }
 
+    /** Singer names in the queue, the most recently queued first, then the one singing now. */
+    fun recentSingers(limit: Int = 6): List<String> {
+        val s = repo.state.value
+        return (s.queue.asReversed().map { it.singer } + listOfNotNull(s.nowPlaying?.singer))
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .take(limit)
+    }
+
     fun notify(message: String) {
         _messages.tryEmit(message)
     }

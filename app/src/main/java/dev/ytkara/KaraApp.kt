@@ -1,6 +1,11 @@
 package dev.ytkara
 
 import android.app.Application
+import coil3.ImageLoader
+import coil3.PlatformContext
+import coil3.SingletonImageLoader
+import coil3.memory.MemoryCache
+import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import dev.ytkara.extract.OkHttpDownloader
 import dev.ytkara.extract.StreamResolver
 import dev.ytkara.queue.QueueRepository
@@ -13,7 +18,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.NewPipe
 
-class KaraApp : Application() {
+class KaraApp : Application(), SingletonImageLoader.Factory {
     lateinit var session: KaraSession
         private set
 
@@ -28,4 +33,11 @@ class KaraApp : Application() {
         val server = KaraServer(session, assets)
         io.launch { server.start() }
     }
+
+    /** Search thumbnails: a small memory cache, the stick has little RAM to spare. */
+    override fun newImageLoader(context: PlatformContext): ImageLoader =
+        ImageLoader.Builder(context)
+            .memoryCache { MemoryCache.Builder().maxSizeBytes(32L * 1024 * 1024).build() }
+            .components { add(OkHttpNetworkFetcherFactory()) }
+            .build()
 }
