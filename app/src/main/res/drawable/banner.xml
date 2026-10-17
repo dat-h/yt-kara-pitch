@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="320dp" android:height="180dp"
+    android:viewportWidth="320" android:viewportHeight="180">
+    <path android:fillColor="#0D0B14" android:pathData="M0,0h320v180h-320z" />
+    <path android:pathData="M0,150h320v30h-320z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="320" android:endY="0"
+                android:startColor="#FF4FA3" android:endColor="#FF9A3D" />
+        </aapt:attr>
+    </path>
+    <!-- microphone -->
+    <path android:fillColor="#FF4FA3" android:pathData="M58,40a18,18 0,0 1,36 0v34a18,18 0,0 1,-36 0z" />
+    <path android:strokeColor="#F4F1FA" android:strokeWidth="6" android:fillColor="#00000000"
+        android:pathData="M48,70a28,28 0,0 0,56 0M76,98v18M62,118h28" />
+    <!-- up/down key arrows -->
+    <path android:fillColor="#FF9A3D" android:pathData="M128,62l18,-22l18,22z" />
+    <path android:fillColor="#FF9A3D" android:pathData="M128,88l18,22l18,-22z" />
+    <!-- wordmark bars -->
+    <path android:fillColor="#F4F1FA" android:pathData="M184,52h104v14h-104z" />
+    <path android:fillColor="#A59DB8" android:pathData="M184,78h76v10h-76z" />
+    <path android:fillColor="#A59DB8" android:pathData="M184,96h92v10h-92z" />
+</vector>

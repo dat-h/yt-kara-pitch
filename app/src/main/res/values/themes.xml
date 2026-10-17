@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.Kara" parent="android:Theme.DeviceDefault.NoActionBar.Fullscreen">
+        <item name="android:windowBackground">@color/background</item>
+        <item name="android:colorAccent">@color/pink</item>
+    </style>
+    <color name="background">#0D0B14</color>
+    <color name="pink">#FF4FA3</color>
+</resources>
